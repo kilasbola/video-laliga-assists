@@ -7,10 +7,19 @@ import {
     staticFile,
     useCurrentFrame,
     useVideoConfig,
+    spring,
+    Img,
 } from "remotion"
 import React, {useEffect, useState} from "react"
 import * as d3 from "d3"
+import {MyCompProps} from '@/types/constants'
+import { FRAMES_PER_DATA } from '@/types/constants'  // Tambahkan import ini
+// Import Rubik dari @remotion/google-fonts
+import { loadFont } from "@remotion/google-fonts/Rubik"
+import playerCustomization from '../../public/player-customization.json'
 
+// Load font
+const { fontFamily } = loadFont() // Ini akan memuat semua weight Rubik secara otomatis
 
 function numberWithCommas(x) {
     return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")
@@ -27,161 +36,96 @@ const BarChartKeyFrames = (
 ) => {
     const frame = useCurrentFrame()
     const {fps} = useVideoConfig()
-    const curKeyframe = keyframes[Math.floor(frame / fps * 10)] || keyframes[keyframes.length - 1]
-    const nextKeyframe = keyframes[Math.floor(frame / fps * 10) + 1] || keyframes[keyframes.length - 1]
-    const prevItems = curKeyframe[1]
-    const nextItems = nextKeyframe[1]
-    const progress = interpolate(
-        frame % fps, // 每30帧闪烁一次
-        [0, fps],
-        [0, 1],
-        {
-            extrapolateLeft: "clamp",
-            extrapolateRight: "clamp",
-            easing: Easing.linear,
-        },
-    )
-    const slideProgress = interpolate(
-        frame % fps, // 每30帧闪烁一次
-        [0, fps],
-        [0, 1],
-        {
-            extrapolateLeft: "clamp",
-            extrapolateRight: "clamp",
-            easing: Easing.cubic,
-        },
-    )
-    console.log("stats --->", curKeyframe[0].getFullYear(), nextKeyframe[0].getFullYear())
-    // 分析 curKeyframe 的 最大值
-    const maxValue = Math.max(...prevItems.map(x => x.value), ...nextItems.map(x => x.value))
-    const maxWidth = 1000 // maybe smaller
-    // const widthPerValue = 1000 / maxValue
 
-    const rectangles = prevItems.slice(0, 12).map((prevItem, idx) => {
-        const nextItem = nextItems.filter(item => item.name === prevItem.name)[0]
-        const width = (1000 * prevItem.value / maxValue) + (1000 * (nextItem.value - prevItem.value) / maxValue) * progress
-        const prevY = 21 + 48 * prevItem.rank
-        const nextY = 21 + 48 * nextItem.rank
-        const curY = prevY + (nextY - prevY) * slideProgress
-        console.log("rect rank", "prev rank", prevItem.rank, nextItem.rank, prevY, nextY, curY, prevItem)
-        return ({color: colorByName.get(prevItem.name), width, y: curY})
-    })
+    // Debug data yang masuk
+    console.log("Frame:", frame)
+    console.log("Sample keyframe:", keyframes[0])
 
-    function getTickPositions(scale, maxWidth) {
-        const tickCount = maxWidth / 300
-        const ticks = scale.ticks(tickCount)
-        return ticks.map(t => ({
-            value: t,
-            position: scale(t),
-        }))
+    const currentIndex = Math.min(Math.floor(frame / fps * 10), keyframes.length - 1)
+    const currentData = keyframes[currentIndex]
+
+    if (!currentData) {
+        console.error('No data available at index:', currentIndex)
+        return null
     }
 
-    const xScale = d3.scaleLinear()
-        .domain([0, maxValue])
-        .range([0, maxWidth])
-    const tickPositions = getTickPositions(xScale, maxWidth)
-    const ticks = tickPositions.map((x, i) => {
-        return {
-            transform: `translate(${x.position}, 0)`,
-            text: x.value,
-            textY: -3,
-            lineStroke: i === 0 ? "currentColor" : "white",
-        }
-    })
+    // Mengubah format data: dari {player: score} menjadi [{name, value}]
+    const items = Object.entries(currentData)
+        .filter(([key]) => key !== 'year' && key !== 'month') // Mengabaikan metadata
+        .map(([playerName, assists]) => ({
+            name: playerName,
+            value: Number(assists) || 0 // Memastikan nilai valid
+        }))
+        .filter(item => item.value > 0) // Hanya pemain dengan assists
+        .sort((a, b) => b.value - a.value) // Sort descending
+        .slice(0, 15) // Top 15 pemain
 
+    console.log("Processed items:", items)
 
-    const textData = prevItems.slice(0, 12).map((prevItem, idx) => {
-        const nextItem = nextItems.filter(item => item.name === prevItem.name)[0]
-        const x = 1000 * prevItem.value / maxValue + (1000 * (nextItem.value - prevItem.value) / maxValue) * progress
-        const value = Math.floor(prevItem.value + (prevItem.value - nextItem.value) * progress)
-        const prevY = 21 + 48 * prevItem.rank
-        const nextY = 21 + 48 * nextItem.rank
-        const curY = prevY + (nextY - prevY) * slideProgress
-        // const targetY = 21 + 48 * curFrame.rank
-        return {
-            transform: `translate(${x}, ${curY})`,
-            company: prevItem.name,
-            value: numberWithCommas(value),
-        }
-    })
+    const maxValue = Math.max(...items.map(x => x.value))
+    const maxWidth = 1000
 
-    return <svg viewBox="0,0,1000,600">
-        <g fillOpacity="0.6">
-            {
-                rectangles.map((rect, index) => (
-                    <rect
-                        key={index}
-                        fill={rect.color}
-                        height={44}
-                        x={0}
-                        y={rect.y}
-                        width={rect.width.toString()}
-                    />
-                ))
-            }
-        </g>
-        <g
-            transform="translate(0,16)"
-            fill="none"
-            fontSize={10}
-            textAnchor="middle"
-        >
-            {
-                ticks.map((tick, index) => (
-                    <g key={index} className="tick" opacity={1} transform={tick.transform}>
-                        <line stroke={tick.lineStroke} y2="580.8"/>
-                        {tick.text && (
-                            <text fill="currentColor" y={tick.textY} dy="0em">
-                                {tick.text}
-                            </text>
-                        )}
-                    </g>
-                ))
-            }
-        </g>
-        <g
-            textAnchor="end"
-            style={{
-                fontStyle: "",
-                fontVariantLigatures: "",
-                fontVariantNumeric: "tabular-nums",
-                fontVariantEastAsian: "",
-                fontVariantAlternates: "",
-                fontFeatureSettings: "",
-                fontVariationSettings: "",
-                fontWeight: "",
-                fontStretch: "",
-                fontSize: "",
-                lineHeight: "",
-                fontFamily: "",
-            }}
-        >
-            {
-                textData.map((item, index) => (
-                    <text key={index} transform={item.transform} y="21.5" x={-6} dy="-0.25em">
-                        {item.company}
-                        <tspan fillOpacity="0.7" fontWeight="normal" x={-6} dy="1.15em">
-                            {item.value}
-                        </tspan>
-                    </text>
-                ))
-            }
-        </g>
-        <text
-            textAnchor="end"
-            x={920}
-            y="570"
-            dy="0.32em"
-            style={{
-                fontVariantNumeric: "tabular-nums",
-                fontSize: 80,
-            }}
-        >
-            {
-                curKeyframe[0].getFullYear()
-            }
-        </text>
-    </svg>
+    return (
+        <div style={{
+            padding: '20px',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: '#fff'
+        }}>
+            {/* Menampilkan tahun dan bulan */}
+            <div style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                fontSize: '24px',
+                color: '#000',
+                fontWeight: 'bold'
+            }}>
+                {currentData.year}/{String(currentData.month).padStart(2, '0')}
+            </div>
+
+            {items.map((item, i) => (
+                <div
+                    key={item.name}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        height: '40px',
+                        marginBottom: '10px',
+                        fontSize: '16px'
+                    }}
+                >
+                    <div style={{
+                        width: '200px',
+                        textAlign: 'right',
+                        paddingRight: '10px',
+                        color: '#000',
+                        fontWeight: 'bold'
+                    }}>
+                        {item.name}
+                    </div>
+                    <div
+                        style={{
+                            width: `${(item.value / maxValue) * maxWidth}px`,
+                            minWidth: '50px',
+                            height: '35px',
+                            backgroundColor: '#1e88e5',
+                            display: 'flex',
+                            alignItems: 'center',
+                            paddingLeft: '10px'
+                        }}
+                    >
+                        <span style={{color: '#fff'}}>
+                            {numberWithCommas(item.value)}
+                        </span>
+                    </div>
+                </div>
+            ))}
+        </div>
+    )
 }
 
 // group
@@ -242,35 +186,605 @@ function computeColorByName(data: any) {
     return colorByName
 }
 
+export const DURATION_IN_FRAMES = 14400  // 4 menit pada 60fps
+export const VIDEO_FPS = 60
 
-export const BarRace: React.FC<{}> = ({}) => {
-    const [colorByName, setColorByName] = useState(new Map())
-    const [keyframes, setKeyframes] = useState([])
-    const [handle] = useState(() => delayRender())
+class SpringSimulator {
+  constructor(stiffness = 0.3, damping = 0.7, mass = 1) {
+    this.stiffness = stiffness;
+    this.damping = damping;
+    this.mass = mass;
+    this.velocity = 0;
+  }
 
-    useEffect(() => {
-        const init = async () => {
-            const res = await fetch(staticFile(`/category-brands.csv`))
-            const text = await res.text()
-            const data = d3.csvParse(text, d3.autoType)
-            const colorByName = computeColorByName(data)
-            setColorByName(colorByName)
-            const keyframes = computeKeyframes(data)
-            setKeyframes(keyframes)
-            continueRender(handle)
+  update(current, target, deltaTime) {
+    const force = (target - current) * this.stiffness;
+    const acceleration = force / this.mass;
+    
+    this.velocity += acceleration * deltaTime;
+    this.velocity *= (1 - this.damping);
+    
+    return current + this.velocity * deltaTime;
+  }
+}
+
+// Konfigurasi animasi mirip amCharts 5
+const ANIMATION_CONFIG = {
+    // Spring config yang lebih smooth
+    spring: {
+        damping: 25,    // Lebih tinggi untuk mengurangi oscillation
+        mass: 1.5,      // Lebih berat untuk gerakan lebih natural
+        stiffness: 70,  // Lebih rendah untuk transisi lebih halus
+        overshootClamping: false
+    },
+    // Entry animation
+    entry: {
+        delay: 3,
+        duration: 15,
+        easing: Easing.bezier(0.25, 0.1, 0.25, 1) // Cubic bezier mirip amCharts
+    }
+}
+
+// Material Design color palette
+const materialColors = [
+    '#F44336', // Red
+    '#E91E63', // Pink
+    '#9C27B0', // Purple
+    '#673AB7', // Deep Purple
+    '#3F51B5', // Indigo
+    '#2196F3', // Blue
+    '#03A9F4', // Light Blue
+    '#00BCD4', // Cyan
+    '#009688', // Teal
+    '#4CAF50', // Green
+    '#8BC34A', // Light Green
+    '#CDDC39', // Lime
+    '#FFC107', // Amber
+    '#FF9800', // Orange
+    '#FF5722', // Deep Orange
+    '#795548', // Brown
+    '#607D8B', // Blue Grey
+];
+
+// Tambahkan konfigurasi falling animation
+const FALLING_CONFIG = {
+    spring: {
+        damping: 15,     // Lebih rendah untuk efek bounce
+        mass: 2,         // Lebih berat untuk efek falling
+        stiffness: 50,   // Lebih rendah untuk gerakan lebih lambat
+        overshootClamping: false
+    }
+};
+
+export const BarRace: React.FC<MyCompProps> = ({keyframes}) => {
+    const frame = useCurrentFrame()
+    const {fps, durationInFrames} = useVideoConfig()
+    
+    // Cache warna untuk setiap pemain
+    const colorCache = React.useMemo(() => {
+        const cache = new Map<string, string>();
+        return cache;
+    }, []);
+
+    const getPlayerColor = React.useCallback((playerName: string) => {
+        if (!colorCache.has(playerName)) {
+            // Pilih warna random dari palet
+            const randomColor = materialColors[Math.floor(Math.random() * materialColors.length)];
+            colorCache.set(playerName, randomColor);
         }
-        init()
-    }, [])
+        return colorCache.get(playerName);
+    }, []);
+
+    // Cache untuk URL profile
+    const profileUrlCache = React.useMemo(() => new Map<string, string>(), []);
+
+    const getPlayerProfile = React.useCallback((playerName: string) => {
+        if (!profileUrlCache.has(playerName)) {
+            profileUrlCache.set(
+                playerName,
+                playerCustomization[playerName]?.profileUrl || 
+                `https://ui-avatars.com/api/?name=${encodeURIComponent(playerName)}&background=random`
+            );
+        }
+        return profileUrlCache.get(playerName);
+    }, []);
+
+    // Menghitung indeks saat ini dengan lebih presisi
+    const currentIndex = Math.min(
+        Math.floor((frame / durationInFrames) * keyframes.length),
+        keyframes.length - 1
+    )
+
+    // Mendapatkan data saat ini
+    const currentData = keyframes[currentIndex]
+
+    if (!currentData) {
+        console.error('No data available at index:', currentIndex)
+        return null
+    }
+
+    // Mengubah format data: dari {player: score} menjadi [{name, value}]
+    const items = Object.entries(currentData)
+        .filter(([key]) => key !== 'year' && key !== 'month')
+        .map(([playerName, assists]) => ({
+            name: playerName,
+            value: Number(assists) || 0
+        }))
+        .filter(item => item.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10)  // Mengubah dari 12 menjadi 10
+
+    // Konfigurasi ukuran dan spacing
+    const CONFIG = {
+        MAX_BAR_WIDTH: 1600,     // Lebar maksimum bar
+        BAR_HEIGHT: 90,          // Tinggi bar
+        BAR_GAP: 12,            // Jarak antar bar
+        NAME_WIDTH: 250,         // Lebar kolom nama
+        FONT_SIZE: 27,          // Ukuran font default
+        VALUE_FONT_SIZE: 30,     // Ukuran font untuk nilai
+        DATE_FONT_SIZE: 32,      // Ukuran font untuk tanggal
+        CONTAINER_PADDING: 20,   // Padding container
+        LEFT_MARGIN: 20,        // Margin kiri baru
+        RIGHT_MARGIN: 40        // Margin kanan baru
+    }
+
+    const maxValue = Math.max(...items.map(x => x.value))
+
+    // Konfigurasi untuk timeline
+    const TIMELINE_CONFIG = {
+        HEIGHT: 40,          // Tinggi area timeline
+        PADDING: 60,         // Padding dari tepi
+        FONT_SIZE: 18,       // Ukuran font untuk label tahun
+        TICK_HEIGHT: 10,     // Tinggi tanda tahun
+        BACKGROUND: '#2d2c2c', // Warna background timeline #f0f0f0
+        LEFT_MARGIN: 40,    // Margin khusus untuk sisi kiri
+        RIGHT_MARGIN: 40,    // Kembali ke margin normal
+        // Pengaturan jarak antar tahun
+        YEAR_GAP: 3,  // Setiap 3 tahun
+        // Pengaturan label tahun
+        LABEL_OFFSET: 15,    // Jarak label tahun dari garis timeline
+        LABEL_BACKGROUND: 'transparent', // Warna background label tahun
+        LABEL_PADDING: '2px 4px', // Padding untuk label tahun
+    }
+
+    // Animasi rotasi untuk emoji bola
+    // Menggunakan interpolate untuk mengontrol rotasi:
+    // - [0, durationInFrames]: range frame dari awal hingga akhir video
+    // - [0, 720]: range derajat rotasi (2 putaran penuh = 720 derajat)
+    // Sesuaikan nilai 720 untuk mengubah kecepatan rotasi:
+    // - Nilai lebih besar = putaran lebih cepat
+    // - Nilai lebih kecil = putaran lebih lambat
+    // Contoh:
+    // - 360 = 1 putaran penuh
+    // - 720 = 2 putaran penuh
+    // - 1080 = 3 putaran penuh
+    // - 1440 = 4 putaran penuh (lebih cepat)
+    const rotation = interpolate(
+        frame,
+        [4, durationInFrames],
+        [0, 1440], // Mengubah ke 4 putaran penuh untuk rotasi lebih cepat
+        {
+            extrapolateRight: "clamp"
+        }
+    )
+
+    // Tambahkan fungsi untuk mendapatkan posisi bar sebelumnya
+    const getPreviousValue = (playerName: string) => {
+        const prevIndex = Math.max(0, currentIndex - 1)
+        const prevData = keyframes[prevIndex]
+        return prevData ? Number(prevData[playerName]) || 0 : 0
+    }
+
+    // Tambahkan fungsi untuk mendapatkan posisi bar sebelumnya
+    const getPreviousRank = (playerName: string) => {
+        const prevIndex = Math.max(0, currentIndex - 1)
+        const prevData = keyframes[prevIndex]
+        if (!prevData) return items.length // Return max rank jika tidak ada data sebelumnya
+        
+        const prevItems = Object.entries(prevData)
+            .filter(([key]) => key !== 'year' && key !== 'month')
+            .map(([name, value]) => ({name, value: Number(value) || 0}))
+            .filter(item => item.value > 0)
+            .sort((a, b) => b.value - a.value)
+        
+        const rank = prevItems.findIndex(item => item.name === playerName)
+        return rank === -1 ? items.length : rank
+    }
 
     return (
-        <AbsoluteFill
-            className="bg-white p-12"
-        >
-            {
-                keyframes.length === 0 ? null : <BarChartKeyFrames
-                    colorByName={colorByName}
-                    keyframes={keyframes}/>
-            }
-        </AbsoluteFill>
+        <div style={{
+            padding: CONFIG.CONTAINER_PADDING,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: '#fff',
+            overflow: 'hidden',
+            fontFamily: fontFamily
+        }}>
+            {/* Static Title Section */}
+            <div style={{
+                position: 'absolute',
+                right: CONFIG.RIGHT_MARGIN + 20,
+                bottom: TIMELINE_CONFIG.HEIGHT + 60,
+                textAlign: 'right',
+                opacity: 0.5,
+                zIndex: 1
+            }}>
+                {/* Year and Month display */}
+                <div style={{
+                    fontSize: CONFIG.DATE_FONT_SIZE,
+                    color: '#000',
+                    fontWeight: 'bold',
+                    marginBottom: 10
+                }}>
+                    {currentData.year}/{String(currentData.month).padStart(2, '0')}
+                </div>
+
+                <div style={{
+                    fontSize: 48,
+                    fontWeight: 'bold',
+                    color: '#000',
+                    lineHeight: 1.2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    gap: '10px'
+                }}>
+                    La Liga 
+                    <Img
+                        src="https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/es.svg"
+                        style={{
+                            width: '48px',
+                            height: 'auto',
+                            display: 'inline-block',
+                            verticalAlign: 'middle'
+                        }}
+                    />
+                </div>
+                <div style={{
+                    fontSize: 32,
+                    color: '#333',
+                    marginTop: 5
+                }}>
+                    All-Time Assists
+                </div>
+            </div>
+
+            {/* Bar chart content */}
+            <div style={{
+                position: 'relative',
+                height: `calc(100% - ${TIMELINE_CONFIG.HEIGHT}px)`,
+                overflow: 'visible',
+                marginLeft: CONFIG.LEFT_MARGIN,
+                marginRight: CONFIG.RIGHT_MARGIN
+            }}>
+                {/* Watermark */}
+                <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '60%',
+                    transform: 'translate(-50%, -50%) rotate(-30deg)',
+                    fontSize: '60px',
+                    fontWeight: 'bold',
+                    color: '#000',
+                    opacity: 0.03,
+                    whiteSpace: 'nowrap',
+                    zIndex: 0,
+                    pointerEvents: 'none',
+                    userSelect: 'none',
+                    textTransform: 'uppercase',
+                    letterSpacing: '10px'
+                }}>
+                    Dango Ball
+                </div>
+
+                {/* Background horizontal lines */}
+                {[...Array(6)].map((_, i) => (
+                    <div
+                        key={`line-${i}`}
+                        style={{
+                            position: 'absolute',
+                            left: 0,
+                            right: 0,
+                            top: `${(i + 1) * (100 / 6)}%`,
+                            height: '1px',
+                            backgroundColor: '#eee',
+                            zIndex: 0
+                        }}
+                    />
+                ))}
+
+                {/* Dynamic vertical lines based on maxValue */}
+                {[0.25, 0.5, 0.75].map((ratio) => {
+                    const value = Math.round(maxValue * ratio);
+                    const position = (value / maxValue) * CONFIG.MAX_BAR_WIDTH;
+                    
+                    return (
+                        <div key={`vline-${ratio}`}>
+                            {/* Vertical line */}
+                            <div style={{
+                                position: 'absolute',
+                                left: `${position}px`,
+                                top: 0,
+                                bottom: 0,
+                                width: '1px',
+                                backgroundColor: '#eee',
+                                zIndex: 0
+                            }} />
+                            {/* Value label */}
+                            <div style={{
+                                position: 'absolute',
+                                left: `${position}px`,
+                                top: -20,
+                                transform: 'translateX(-50%)',
+                                fontSize: '19px',
+                                color: '#666',
+                                zIndex: 0
+                            }}>
+                                {numberWithCommas(value)}
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {items.map((item, i) => {
+                    // Hitung arah pergerakan (naik/turun)
+                    const previousRank = getPreviousRank(item.name);
+                    const currentRank = i;
+                    const isMovingDown = currentRank > previousRank;
+
+                    // Gunakan spring config yang berbeda untuk gerakan turun
+                    const springConfig = isMovingDown ? FALLING_CONFIG.spring : ANIMATION_CONFIG.spring;
+
+                    // Spring animation untuk posisi vertikal
+                    const verticalSpring = spring({
+                        frame: frame,
+                        fps,
+                        config: springConfig
+                    });
+
+                    const yPosition = interpolate(
+                        verticalSpring,
+                        [0, 1],
+                        [previousRank * 50, currentRank * 50],
+                        {
+                            easing: isMovingDown ? Easing.bounceOut : ANIMATION_CONFIG.entry.easing
+                        }
+                    );
+
+                    // Spring animation untuk width bar - lebih halus
+                    const previousValue = getPreviousValue(item.name)
+                    const targetWidth = (item.value / maxValue) * CONFIG.MAX_BAR_WIDTH
+                    const previousWidth = (previousValue / maxValue) * CONFIG.MAX_BAR_WIDTH
+                    
+                    const widthSpring = spring({
+                        frame: frame,
+                        fps,
+                        config: {
+                            damping: 25,    // Lebih tinggi untuk perubahan width yang lebih stabil
+                            mass: 1.5,      // Lebih berat untuk mengurangi fluktuasi
+                            stiffness: 70,  // Lebih rendah untuk transisi lebih lambat
+                            overshootClamping: false
+                        }
+                    })
+
+                    // Entry animation dengan timing yang lebih baik
+                    const entryStartFrame = currentIndex * FRAMES_PER_DATA + (i * ANIMATION_CONFIG.entry.delay)
+                    const entryProgress = interpolate(
+                        frame - entryStartFrame,
+                        [0, ANIMATION_CONFIG.entry.duration],
+                        [0, 1],
+                        {
+                            extrapolateLeft: 'clamp',
+                            extrapolateRight: 'clamp',
+                            easing: ANIMATION_CONFIG.entry.easing
+                        }
+                    )
+
+                    // Interpolate width dengan spring yang lebih smooth
+                    const interpolatedWidth = interpolate(
+                        widthSpring,
+                        [0, 1],
+                        [previousWidth, targetWidth],
+                        {
+                            easing: ANIMATION_CONFIG.entry.easing
+                        }
+                    )
+
+                    return (
+                        <div
+                            key={item.name}
+                            style={{
+                                position: 'absolute',
+                                top: yPosition,
+                                left: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                height: CONFIG.BAR_HEIGHT,
+                                width: `calc(100% - ${CONFIG.LEFT_MARGIN + CONFIG.RIGHT_MARGIN}px)`,
+                                transform: `translateY(${yPosition}px)`,
+                                transition: 'all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)'
+                            }}
+                        >
+                            <div
+                                style={{
+                                    width: `${interpolatedWidth}px`,
+                                    minWidth: '60px',
+                                    height: CONFIG.BAR_HEIGHT - 5,
+                                    backgroundColor: getPlayerColor(item.name),
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    paddingLeft: '15px',
+                                    position: 'relative',
+                                    borderLeft: '4px solid rgba(0, 0, 0, 0.2)',
+                                    borderRadius: '0 15px 15px 0',
+                                    transition: 'all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)'
+                                }}
+                            >
+
+                                <span style={{
+                                    color: '#fff',
+                                    fontSize: CONFIG.FONT_SIZE,
+                                    fontWeight: 'bolder',
+                                    textShadow: `
+                                        -1px -1px 0 rgba(0,0,0,0.10),
+                                        1px -1px 0 rgba(0,0,0,0.10),
+                                        -1px 1px 0 rgba(0,0,0,0.10),
+                                        1px 1px 0 rgba(0,0,0,0.10)
+                                    `,
+                                    backgroundColor: 'rgba(0,0,0,0.1)',
+                                    padding: '4px 8px',
+                                    borderRadius: '4px',
+                                    display: 'inline-block'
+                                }}>
+                                    {item.name}
+                                </span>
+                                
+                                <span style={{
+                                    color: '#fff',
+                                    fontSize: CONFIG.VALUE_FONT_SIZE,
+                                    fontWeight: 'bolder',
+                                    position: 'absolute',
+                                    right: '15px',
+                                    textShadow: `
+                                        -1px -1px 0 rgba(0,0,0,0.0),
+                                        1px -1px 0 rgba(0,0,0,0.1),
+                                        -1px 1px 0 rgba(0,0,0,0.0),
+                                        1px 1px 0 rgba(0,0,0,0.1)
+                                    `,
+                                    backgroundColor: 'rgba(0,0,0,0.0)',
+                                    padding: '4px 8px',
+                                    borderRadius: '4px'
+                                }}>
+                                    {numberWithCommas(item.value)}
+                                </span>
+
+                                {/* Player Photo */}
+                                <div style={{
+                                    position: 'absolute',
+                                    right: -90,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    width: '80px',
+                                    height: '80px',
+                                    borderRadius: '50%',
+                                    border: '3px solid #000',
+                                    overflow: 'hidden',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                }}>
+                                    <Img
+                                        src={getPlayerProfile(item.name)}
+                                        style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            objectFit: 'cover'
+                                        }}
+                                        loading="eager"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+
+            {/* Timeline dengan struktur yang lebih baik */}
+            <div style={{
+                position: 'absolute',
+                bottom: 0,
+                left: TIMELINE_CONFIG.LEFT_MARGIN,
+                right: TIMELINE_CONFIG.RIGHT_MARGIN,
+                height: TIMELINE_CONFIG.HEIGHT,
+                backgroundColor: TIMELINE_CONFIG.BACKGROUND,
+                display: 'flex',
+                alignItems: 'center',
+                padding: `0 ${TIMELINE_CONFIG.PADDING}px`,
+                zIndex: 1
+            }}>
+                {/* Garis timeline */}
+                <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: TIMELINE_CONFIG.PADDING,
+                    right: TIMELINE_CONFIG.PADDING,
+                    height: '2px',
+                    backgroundColor: '#666',
+                    transform: 'translateY(-50%)'
+                }} />
+
+                {/* Emoji bola yang berputar - sesuaikan posisinya */}
+                <div style={{
+                    position: 'absolute',
+                    left: `${(frame / durationInFrames * 100)}%`,
+                    top: '50%',
+                    fontSize: '24px',
+                    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+                    zIndex: 2
+                }}>
+                    ⚽
+                </div>
+
+                {/* Tahun dan bulan saat ini - sesuaikan posisinya */}
+                <div style={{
+                    position: 'absolute',
+                    left: `${(frame / durationInFrames * 100)}%`,
+                    bottom: '100%',
+                    transform: 'translateX(-50%)',
+                    backgroundColor: 'transparent', // #e91e63
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    fontSize: TIMELINE_CONFIG.FONT_SIZE,
+                    fontWeight: 'bold',
+                    color: '#000',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                }}>
+                    {currentData.year}/{String(currentData.month).padStart(2, '0')}
+                </div>
+
+                {/* Ticks dan labels tahun dengan posisi yang disesuaikan */}
+                {keyframes
+                    .filter((data, i) => i % (12 * TIMELINE_CONFIG.YEAR_GAP) === 0)
+                    .map((data, i, arr) => {
+                        const position = (i / (arr.length - 1)) * 100;
+                        // Hanya render jika dalam area yang aman (5% dari tepi)
+                        if (position >= 5 && position <= 95) {
+                            return (
+                                <div
+                                    key={i}
+                                    style={{
+                                        position: 'absolute',
+                                        left: `${position}%`,
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center'
+                                    }}
+                                >
+                                    {/* Tick mark */}
+                                    <div style={{
+                                        width: '2px',
+                                        height: TIMELINE_CONFIG.TICK_HEIGHT,
+                                        backgroundColor: '#666'
+                                    }} />
+                                    {/* Label tahun */}
+                                    <div style={{
+                                        marginTop: TIMELINE_CONFIG.LABEL_OFFSET,
+                                        fontSize: TIMELINE_CONFIG.FONT_SIZE,
+                                        color: '#666',
+                                        backgroundColor: TIMELINE_CONFIG.LABEL_BACKGROUND,
+                                        padding: TIMELINE_CONFIG.LABEL_PADDING,
+                                        borderRadius: '9px',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        {String(data.year).slice(-2)}
+                                    </div>
+                                </div>
+                            );
+                        }
+                        return null;
+                    })}
+            </div>
+        </div>
     )
 }

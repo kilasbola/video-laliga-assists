@@ -6,8 +6,5 @@ module.exports = {
     "./remotion/**/*.{ts,tsx}",
   ],
   theme: {},
-  plugins: [
-    require("daisyui"),
-  ],
-}
-
+  plugins: [require("daisyui")],
+};
