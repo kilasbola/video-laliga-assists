@@ -1,0 +1,48 @@
+name: Render Remotion Video
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Install Puppeteer Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxrandr2 libgbm1 libasound2
+      
+      - name: Build Project
+        run: npm run build
+
+      - name: Render Video
+        run: npx remotion render
+
+      - name: Install FFmpeg
+        run: sudo apt-get install -y ffmpeg
+
+      - name: Compress Video
+        run: |
+          mkdir -p compressed
+          ffmpeg -i out/video.mp4 -vcodec libx265 -crf 28 compressed/video-compressed.mp4
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: remotion-video
+          path: compressed/video-compressed.mp4
+          retention-days: 7
