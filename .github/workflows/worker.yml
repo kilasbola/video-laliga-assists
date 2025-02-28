@@ -18,8 +18,13 @@ jobs:
         with:
           node-version: '18.x'
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: latest
+
       - name: Install Dependencies
-        run: npm install
+        run: pnpm install
 
       - name: Install Puppeteer Dependencies
         run: |
@@ -27,10 +32,10 @@ jobs:
           sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxrandr2 libgbm1 libasound2
       
       - name: Build Project
-        run: npm run build
+        run: pnpm run build
 
       - name: Render Video
-        run: npx remotion render
+        run: pnpm exec remotion render remotion/chart/BarRace.tsx out/video.mp4 --config src/remotion.config.ts
 
       - name: Install FFmpeg
         run: sudo apt-get install -y ffmpeg
@@ -44,5 +49,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: remotion-video
-          path: compressed/video-compressed.mp4
+          path: out/video.mp4
           retention-days: 7
