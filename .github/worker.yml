@@ -1,4 +1,4 @@
-name: Render Remotion Video
+name: Render Video
 
 on:
   push:
